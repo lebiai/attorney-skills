@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """
-search_knowledge.py v2 — 双源知识库检索（改进版）
+search_knowledge.py v3 — 双源知识库检索
+
+检索方式：LIKE 全文匹配（支持中文，无需外部依赖）
+评分方式：完整关键词命中计数（案由匹配权重更高）
+
+接口：python3 search_knowledge.py <关键词1> <关键词2> ...
+
+依赖：Python 内置模块（sqlite3, json, sys, os）
 """
 
 import sys
 import os
 import json
 import sqlite3
-import re
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(SKILL_DIR, "data")
@@ -27,6 +33,7 @@ def _safe_json_parse(raw):
 
 
 def _extract_content(analysis_data):
+    """从 analysis JSON 中提取最有信息量的文字"""
     parts = []
     lm = analysis_data.get("litigation_motive", {}) or {}
     if isinstance(lm, dict):
@@ -56,83 +63,53 @@ def _extract_content(analysis_data):
     return " ".join(parts)
 
 
-def _build_fts5_query(keywords):
-    clauses = []
-    for kw in keywords:
-        clean = re.sub(r'[\s,，。、；：""''【】（）()《》]', '', kw)
-        if not clean:
-            continue
-        if len(clean) == 1:
-            clauses.append(clean)
-        else:
-            chars = " AND ".join(list(clean))
-            clauses.append(f"({chars})")
-    return " OR ".join(clauses)
-
-
 def _score_result(analysis_text, case_type, keywords):
+    """
+    评分规则（纯整词匹配，无子串干扰）：
+    - 完整关键词出现在 analysis 中：+10
+    - 完整关键词出现在 case_type 中：+15（案由匹配最重要）
+    - 需要至少 1 个整词命中 case_type 或 2 个整词命中 analysis 才算相关
+    """
     score = 0
     for kw in keywords:
         clean = kw.strip()
         if not clean:
             continue
-        # 原词匹配
         if clean in analysis_text:
-            score += 3
+            score += 10
         if clean in case_type:
-            score += 5
-        # 双字子串匹配
-        for i in range(len(clean) - 1):
-            bigram = clean[i:i+2]
-            if len(bigram) >= 2 and bigram in analysis_text:
-                score += 1
+            score += 15
     return score
 
 
 def search_db(db_path, keywords, top_k):
+    """检索单个数据库：LIKE 主通道（兼容 FTS5 不可靠的中文环境）"""
     results = []
     if not os.path.exists(db_path):
         return results
+    
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         
-        fts5_query = _build_fts5_query(keywords)
         combined = []
         seen_ids = set()
         
-        # 通道1: FTS5
-        if fts5_query.strip() and fts5_query != "OR":
+        # 主通道: LIKE 多关键词检索
+        for kw in keywords:
+            if not kw.strip():
+                continue
             try:
                 for row in conn.execute(
-                    """SELECT c.id, c.case_no, c.court_name, c.case_type,
-                              c.result, c.result_type, c.analysis
-                       FROM cases_fts f JOIN cases c ON c.id = f.case_id
-                       WHERE cases_fts MATCH ?
-                       ORDER BY rank LIMIT ?""",
-                    (fts5_query, top_k * 2)
+                    "SELECT id, case_no, case_type, court_name, result_type, analysis "
+                    "FROM cases WHERE analysis LIKE ? LIMIT ?",
+                    (f'%{kw}%', top_k)
                 ):
                     if row["id"] not in seen_ids:
                         seen_ids.add(row["id"])
                         combined.append(dict(row))
             except Exception:
                 pass
-        
-        # 通道2: LIKE 兜底
-        if len(combined) < top_k:
-            for kw in keywords:
-                if not kw.strip():
-                    continue
-                try:
-                    for row in conn.execute(
-                        "SELECT * FROM cases WHERE analysis LIKE ? LIMIT ?",
-                        (f'%{kw}%', top_k - len(combined))
-                    ):
-                        if row["id"] not in seen_ids:
-                            seen_ids.add(row["id"])
-                            combined.append(dict(row))
-                except Exception:
-                    pass
         
         conn.close()
         
@@ -157,6 +134,7 @@ def search_db(db_path, keywords, top_k):
         results = scored[:top_k]
     except Exception as e:
         print(f"[search] WARNING: {os.path.basename(db_path)} 检索异常: {e}", file=sys.stderr)
+    
     return results
 
 
@@ -170,8 +148,8 @@ def main():
         print("NO_RESULTS")
         sys.exit(0)
     
-    results = search_db(PUBLIC_DB, keywords, 5)
-    results += search_db(PRIVATE_DB, keywords, 2)
+    results = search_db(PUBLIC_DB, keywords, 8)
+    results += search_db(PRIVATE_DB, keywords, 3)
     
     # 去重
     seen, deduped = set(), []
@@ -187,8 +165,8 @@ def main():
         print("NO_RESULTS")
         sys.exit(0)
     
-    # 判断相关性
-    relevant = [r for r in deduped if r["score"] >= 5]
+    # 判断相关性（阈值 20 = 1个案由匹配 + 1个原文匹配 / 2个原文匹配）
+    relevant = [r for r in deduped if r["score"] >= 20]
     
     if not relevant:
         print("NO_EXACT_MATCH")
