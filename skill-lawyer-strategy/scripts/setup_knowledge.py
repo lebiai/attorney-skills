@@ -22,7 +22,7 @@ import urllib.error
 
 # ===== 配置 =====
 # 技能知识库 GitHub Releases 地址
-GITHUB_OWNER = "aodunsenmai-dot"  # TODO: 替换为实际 GitHub 用户名
+GITHUB_OWNER = "lebiai"
 GITHUB_REPO = "attorney-skills"
 RELEASE_API = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 DOWNLOAD_URL_TEMPLATE = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest/download/distilled.db"

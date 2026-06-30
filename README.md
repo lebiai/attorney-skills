@@ -24,7 +24,7 @@ Codex 会自动从 GitHub clone 到本机。
 
 ```bash
 # 克隆仓库
-git clone https://github.com/aodunsenmai-dot/attorney-skills.git
+git clone https://github.com/lebiai/attorney-skills.git
 
 # 复制到 Codex skills 目录
 cp -r attorney-skills/skill-lawyer-case-analysis ~/.codex/skills/
