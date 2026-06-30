@@ -1,0 +1,4 @@
+# 保护用户本地数据 - 不提交到 git
+*.db
+skill-lawyer-strategy/data/user_profile.json
+skill-lawyer-strategy/data/personal_knowledge.json
