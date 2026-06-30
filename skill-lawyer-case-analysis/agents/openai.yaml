@@ -1,0 +1,3 @@
+display_name: "案件深度分析"
+short_description: "上传判决书，自动输出 9 章结构化分析报告（争议焦点/证据链/法律路径/法官倾向等）"
+default_prompt: "帮我深度分析这份判决书"

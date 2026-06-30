@@ -1,0 +1,3 @@
+display_name: "诉讼策略分析"
+short_description: "描述案情，基于真实判例自动生成攻防策略建议与裁判倾向分析"
+default_prompt: "帮我看看这个案子怎么打"
